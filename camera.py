@@ -7,20 +7,9 @@ from torchvision import models
 
 from PIL import Image
 
-class ResNetMultiLabel(nn.Module):
-    def __init__(self, num_classes):
-        super(ResNetMultiLabel, self).__init__()
-        self.name = "resnetclassifier"
-        self.densenet = models.densenet121(pretrained=True)
-        num_features = self.densenet.classifier.in_features
-        # Attaching our classifier to the pretrained model
-        self.densenet.classifier = nn.Linear(num_features, num_classes)
-        self.sigmoid = nn.Sigmoid()
+from picamera2 import PiCamera2, Preview
 
-    def forward(self, x):
-        x = self.densenet(x)
-        x = self.sigmoid(x)
-        return x
+# Define the model
 
 class ResNet(nn.Module):
     def init(self,num_classes):
@@ -61,13 +50,20 @@ else:
 #####################################
 
 # Load in the model checkpoint
-state = torch.load('model_densenetclassifier_bs150_lr0.001_dr0.9_thresh0.5_epoch9', map_location=torch.device('cpu'))
+state = torch.load('model_densenetclassifier_bs150_lr0.001_dr0.9_thresh0.5_epoch9', map_location=torch.device('cpu')) # REPLACE THIS
 state = {k.replace('module.', ''): v for k, v in state.items()}
 resnetclassifier.load_state_dict(state)
 
 resnetclassifier.eval()
 
 #####################################
+
+# Take an image using the PiCam
+camera = Picamera2()
+camera.start_preview()
+sleep(3)
+camera.start_and_capture_file("plant.jpg")
+camera.stop_preview()
 
 # Load in a single image to perform the prediction on
 transform = transforms.Compose([transforms.Resize((224,224)), transforms.ToTensor(),
@@ -81,7 +77,6 @@ input_img = transform(image).unsqueeze(0)
 #####################################
 
 # Define the 38 possible classes
-
 classes: ['Apple___Apple_scab', 'Apple___Black_rot', 'Apple___Cedar_apple_rust', 'Apple___healthy', 'Blueberry___healthy', 
             'Cherry_(including_sour)___Powdery_mildew', 'Cherry_(including_sour)___healthy', 'Corn_(maize)___Cercospora_leaf_spot Gray_leaf_spot', 
             'Corn_(maize)___Common_rust_', 'Corn_(maize)___Northern_Leaf_Blight', 'Corn_(maize)___healthy', 'Grape___Black_rot', 
@@ -92,17 +87,18 @@ classes: ['Apple___Apple_scab', 'Apple___Black_rot', 'Apple___Cedar_apple_rust',
             'Tomato___Leaf_Mold', 'Tomato___Septoria_leaf_spot', 'Tomato___Spider_mites Two-spotted_spider_mite', 'Tomato___Target_Spot', 
             'Tomato___Tomato_Yellow_Leaf_Curl_Virus', 'Tomato___Tomato_mosaic_virus', 'Tomato___healthy']
 
-# Set prediction threshold
-threshold = 0.5
-
 # Make the prediction
 output = resnetclassifier(input_img)
 output = output.detach().cpu()
 
-best = (output >= threshold).int()
+# Find the maximum probability and its index
+max_prob, max_idx = torch.max(output, dim=1)
 
-# Interpret the tensor and save the predicted classes
-predicted_indices = best.squeeze().nonzero().flatten().tolist()
-predicted_classes = [classes[i] for i in predicted_indices]
+# Index to get the name of the most probable class
+predicted_class = classes[max_idx.item()]
 
+# Display final image & result
+image_path = "/content/drive/MyDrive/APS360 Final Project/Testing Food Dataset/"
+img = Image.open(image_path)
+display(img)
 print(predicted_class)
